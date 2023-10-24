@@ -21,7 +21,7 @@ use halo2_proofs::{
     circuit::Value,
     plonk::{
         Error,
-        Expression::{self, Constant},
+        Expression::{self, Constant}, Instance, Column,
     },
 };
 use itertools::Itertools;
@@ -185,6 +185,13 @@ pub(crate) trait ConstrainBuilderCommon<F: Field> {
         self.add_constraint(name, lhs - rhs);
     }
 
+    fn require_equal_many(&mut self, name: &'static str, lhs: Vec<Expression<F>>, rhs: Vec<Expression<F>>) {
+        assert!(lhs.len() == rhs.len(), "expressions len should be equal");
+        for i in 0..lhs.len() {
+            self.add_constraint(name, lhs[i].clone() - rhs[i].clone());
+        }
+    }
+
     fn require_boolean(&mut self, name: &'static str, value: Expression<F>) {
         self.add_constraint(name, value.clone() * (1.expr() - value));
     }
@@ -315,6 +322,7 @@ pub(crate) struct EVMConstraintBuilder<'a, F> {
     pub(crate) max_inner_degree: (&'static str, usize),
     #[cfg(feature = "debug-annotations")]
     annotations: Vec<String>,
+    instance: Vec<Vec<Expression<F>>>,
 }
 
 impl<'a, F: Field> ConstrainBuilderCommon<F> for EVMConstraintBuilder<'a, F> {
@@ -341,6 +349,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         next: Step<F>,
         challenges: &'a Challenges<Expression<F>>,
         execution_state: ExecutionState,
+        instance: Vec<Vec<Expression<F>>>,
     ) -> Self {
         Self {
             max_degree: MAX_DEGREE,
@@ -364,6 +373,7 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
             stored_expressions: Vec::new(),
             max_inner_degree: ("", 0),
             annotations: Vec::new(),
+            instance,
         }
     }
 
@@ -495,6 +505,11 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         }
         .cell_manager
         .query_cells(cell_type, count)
+    }
+
+    pub(crate) fn query_instance(&self, idx: usize) -> Vec<Expression<F>> {
+        assert!(idx < self.instance.len(), "idx exceeds instance lenght");
+        self.instance[idx].clone()
     }
 
     pub(crate) fn word_rlc<const N: usize>(&self, bytes: [Expression<F>; N]) -> Expression<F> {

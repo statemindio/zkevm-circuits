@@ -78,7 +78,7 @@ use crate::{
     table::{
         BlockTable, BytecodeTable, CopyTable, EccTable, ExpTable, KeccakTable, ModExpTable,
         MptTable, PoseidonTable, PowOfRandTable, RlpFsmRlpTable as RlpTable, RwTable, SigTable,
-        TxTable, U16Table, U8Table,
+        TxTable, U16Table, U8Table, InstanceTable,
     },
     tx_circuit::{TxCircuit, TxCircuitConfig, TxCircuitConfigArgs},
     util::{circuit_stats, log2_ceil, Challenges, SubCircuit, SubCircuitConfig},
@@ -197,6 +197,8 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
         log_circuit_info(meta, "ecc table");
         let pow_of_rand_table = PowOfRandTable::construct(meta, &challenges_expr);
         log_circuit_info(meta, "power of randomness table");
+        let instance_table = InstanceTable::construct(meta);
+        log_circuit_info(meta, "instance table");
 
         let u8_table = U8Table::construct(meta);
         log_circuit_info(meta, "u8 table");
@@ -341,6 +343,7 @@ impl SubCircuitConfig<Fr> for SuperCircuitConfig<Fr> {
                 modexp_table,
                 ecc_table,
                 pow_of_rand_table,
+                instance_table,
             },
         );
         log_circuit_info(meta, "evm circuit");

@@ -265,9 +265,9 @@ impl<const NACC: usize, const NTX: usize> CircuitTestBuilder<NACC, NTX> {
             let k = block.get_evm_test_circuit_degree();
             assert!(k <= 20);
             let (active_gate_rows, active_lookup_rows) = EvmCircuit::<Fr>::get_active_rows(&block);
-
             let circuit = EvmCircuit::get_test_cicuit_from_block(block.clone());
-            let prover = MockProver::<Fr>::run(k, &circuit, vec![]).unwrap();
+            let instance = circuit.instance();
+            let prover = MockProver::<Fr>::run(k, &circuit, instance).unwrap();
 
             evm_checks(prover, &active_gate_rows, &active_lookup_rows)
         }

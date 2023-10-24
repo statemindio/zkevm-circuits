@@ -17,11 +17,11 @@ use crate::{
             constraint_builder::{
                 BaseConstraintBuilder, ConstrainBuilderCommon, EVMConstraintBuilder,
             },
-            rlc, CellType,
+            rlc, CellType, Word, StepRws,
         },
-        witness::{Block, Call, ExecStep, Transaction},
+        witness::{Block, Call, ExecStep, Transaction}, EvmCircuit,
     },
-    table::{LookupTable, RwTableTag, TxReceiptFieldTag},
+    table::{LookupTable, RwTableTag, TxReceiptFieldTag, InstanceTable},
     util::{query_expression, Challenges, Expr},
 };
 use bus_mapping::util::read_env_var;
@@ -32,7 +32,7 @@ use halo2_proofs::{
     circuit::{Layouter, Region, Value},
     plonk::{
         Advice, Assigned, Column, ConstraintSystem, Error, Expression, FirstPhase, Fixed, Selector,
-        VirtualCells,
+        VirtualCells, Instance,
     },
     poly::Rotation,
 };
@@ -239,6 +239,13 @@ pub(crate) trait ExecutionGadget<F: FieldExt> {
         call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error>;
+
+    fn query_instance(
+        meta: &mut ConstraintSystem<F>,
+        instance_table: &InstanceTable,
+    ) -> Vec<Vec<Expression<F>>> {
+        vec![]
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -383,6 +390,7 @@ impl<F: Field> ExecutionConfig<F> {
         modexp_table: &dyn LookupTable<F>,
         ecc_table: &dyn LookupTable<F>,
         pow_of_rand_table: &dyn LookupTable<F>,
+        instance_table: &InstanceTable
     ) -> Self {
         let mut instrument = Instrument::default();
         let q_usable = meta.complex_selector();
@@ -525,6 +533,7 @@ impl<F: Field> ExecutionConfig<F> {
                         &mut height_map,
                         &mut stored_expressions_map,
                         &mut instrument,
+                        instance_table,
                     ))
                 })()
             };
@@ -685,7 +694,9 @@ impl<F: Field> ExecutionConfig<F> {
         height_map: &mut HashMap<ExecutionState, usize>,
         stored_expressions_map: &mut HashMap<ExecutionState, Vec<StoredExpression<F>>>,
         instrument: &mut Instrument,
+        instance_table: &InstanceTable,
     ) -> G {
+        let instance = G::query_instance(meta, instance_table);
         // Configure the gadget with the max height first so we can find out the actual
         // height
         let height = {
@@ -695,6 +706,7 @@ impl<F: Field> ExecutionConfig<F> {
                 dummy_step_next,
                 challenges,
                 G::EXECUTION_STATE,
+                instance.clone(),
             );
             cb.annotation(G::NAME, |cb| G::configure(cb));
             let (_, _, _, height) = cb.build();
@@ -708,6 +720,7 @@ impl<F: Field> ExecutionConfig<F> {
             step_next.clone(),
             challenges,
             G::EXECUTION_STATE,
+            instance,
         );
 
         let gadget = cb.annotation(G::NAME, |cb| G::configure(cb));
@@ -1750,5 +1763,31 @@ impl<F: Field> ExecutionConfig<F> {
         //             step.execution_state);
         //     }
         // }
+    }
+
+    pub fn instance(&self, block: &Block<F>) -> Vec<Vec<F>> {
+        let mut offset = 0;
+        let num_rows = EvmCircuit::get_min_num_rows_required(block);
+
+        let mut instance = vec![vec![F::zero(); num_rows]; 32];
+
+        for transaction in &block.txs {
+            for step in &transaction.steps {
+                let height = step.execution_state.get_step_height();
+                if step.execution_state == ExecutionState::SHA3 {
+                    let mut rws = StepRws::new(block, step);
+                    rws.offset_add(2);
+                    let sha3_output = rws.next().stack_value().to_le_bytes();
+                    for i in offset..offset + height {
+                        for j in 0..32 {
+                            instance[j][i] = F::from_u128(sha3_output[j] as u128);
+                        }
+                    }
+                }
+                offset += height;
+            }
+        }
+
+        instance
     }
 }

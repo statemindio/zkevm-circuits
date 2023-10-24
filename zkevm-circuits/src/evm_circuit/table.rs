@@ -6,7 +6,7 @@ use crate::{
 use bus_mapping::{evm::OpcodeId, precompile::PrecompileCalls};
 use eth_types::Field;
 use gadgets::util::Expr;
-use halo2_proofs::plonk::Expression;
+use halo2_proofs::plonk::{Expression, Column, Instance};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 

@@ -1,9 +1,9 @@
 use bus_mapping::{circuit_input_builder::CopyDataType, evm::OpcodeId};
 use eth_types::{evm_types::GasCost, Field, ToLittleEndian, ToScalar};
 use gadgets::util::{not, Expr};
-use halo2_proofs::{circuit::Value, plonk::Error};
+use halo2_proofs::{circuit::Value, plonk::{Error, Expression, ConstraintSystem}, poly::Rotation};
 
-use crate::evm_circuit::{
+use crate::{evm_circuit::{
     param::N_BYTES_MEMORY_WORD_SIZE,
     step::ExecutionState,
     util::{
@@ -18,7 +18,7 @@ use crate::evm_circuit::{
         rlc, CachedRegion, Cell, StepRws, Word,
     },
     witness::{Block, Call, ExecStep, Transaction},
-};
+}, table::InstanceTable, util::query_expression};
 
 use super::ExecutionGadget;
 
@@ -44,6 +44,7 @@ impl<F: Field> ExecutionGadget<F> for Sha3Gadget<F> {
         let offset = cb.query_cell_phase2();
         let size = cb.query_word_rlc();
         let sha3_rlc = cb.query_word_rlc();
+        let keccak_instance = cb.query_instance(0);
 
         cb.stack_pop(offset.expr());
         cb.stack_pop(size.expr());
@@ -74,6 +75,8 @@ impl<F: Field> ExecutionGadget<F> for Sha3Gadget<F> {
             cb.require_zero("rlc_acc == 0 for size = 0", rlc_acc.expr());
         });
         cb.keccak_table_lookup(rlc_acc.expr(), memory_address.length(), sha3_rlc.expr());
+        let sha3_exprs: Vec<Expression<F>> = sha3_rlc.cells.iter().map(|c| c.expr()).collect();
+        cb.require_equal_many("keccak equal", sha3_exprs, keccak_instance);
 
         let memory_expansion = MemoryExpansionGadget::construct(cb, [memory_address.end_offset()]);
         let memory_copier_gas = MemoryCopierGasGadget::construct(
@@ -157,6 +160,19 @@ impl<F: Field> ExecutionGadget<F> for Sha3Gadget<F> {
             .assign(region, offset, size.as_u64(), memory_expansion_gas_cost)?;
 
         Ok(())
+    }
+
+    fn query_instance(
+        meta: &mut ConstraintSystem<F>,
+        instance_table: &InstanceTable,
+    ) -> Vec<Vec<Expression<F>>> {
+        let mut instance: Vec<Vec<Expression<F>>> = vec![vec![]];
+            query_expression(meta, |meta| {
+                for column in instance_table.keccak {
+                    instance[0].push(meta.query_instance(column.to_owned(), Rotation(0 as i32)));
+                }
+            });
+        instance
     }
 }
 

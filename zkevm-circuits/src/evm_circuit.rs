@@ -23,7 +23,7 @@ use crate::{
     evm_circuit::param::{MAX_STEP_HEIGHT, STEP_STATE_HEIGHT},
     table::{
         BlockTable, BytecodeTable, CopyTable, EccTable, ExpTable, KeccakTable, LookupTable,
-        ModExpTable, PowOfRandTable, RwTable, SigTable, TxTable,
+        ModExpTable, PowOfRandTable, RwTable, SigTable, TxTable, InstanceTable,
     },
     util::{SubCircuit, SubCircuitConfig},
 };
@@ -81,6 +81,8 @@ pub struct EvmCircuitConfigArgs<F: Field> {
     pub ecc_table: EccTable,
     // Power of Randomness Table.
     pub pow_of_rand_table: PowOfRandTable,
+    // Instance table
+    pub instance_table: InstanceTable,
 }
 
 /// Circuit exported cells after synthesis, used for subcircuit
@@ -110,6 +112,7 @@ impl<F: Field> SubCircuitConfig<F> for EvmCircuitConfig<F> {
             modexp_table,
             ecc_table,
             pow_of_rand_table,
+            instance_table,
         }: Self::ConfigArgs,
     ) -> Self {
         let fixed_table = [(); 4].map(|_| meta.fixed_column());
@@ -130,6 +133,7 @@ impl<F: Field> SubCircuitConfig<F> for EvmCircuitConfig<F> {
             &modexp_table,
             &ecc_table,
             &pow_of_rand_table,
+            &instance_table,
         ));
 
         meta.annotate_lookup_any_column(byte_table[0], || "byte_range");
@@ -280,6 +284,13 @@ impl<F: Field> EvmCircuit<F> {
 
         // It must have one row for EndBlock and at least one unused one
         num_rows + 2
+    }
+
+    pub fn instance(&self) -> Vec<Vec<F>> {
+        let mut meta = ConstraintSystem::<F>::default();
+        let circuit = EvmCircuit::configure(&mut meta);
+        let instance = circuit.0.execution.instance(self.block.as_ref().unwrap());
+        instance
     }
 }
 
@@ -432,6 +443,10 @@ pub(crate) mod cached {
         pub fn get_test_cicuit_from_block(block: Block<Fr>) -> Self {
             Self(EvmCircuit::<Fr>::get_test_cicuit_from_block(block))
         }
+
+        pub(crate) fn instance(&self) -> Vec<Vec<Fr>> {
+            self.0.instance()
+        }
     }
 }
 
@@ -465,6 +480,7 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
         let modexp_table = ModExpTable::construct(meta);
         let ecc_table = EccTable::construct(meta);
         let pow_of_rand_table = PowOfRandTable::construct(meta, &challenges_expr);
+        let instance_table = InstanceTable::construct(meta);
         (
             EvmCircuitConfig::new(
                 meta,
@@ -481,6 +497,7 @@ impl<F: Field> Circuit<F> for EvmCircuit<F> {
                     modexp_table,
                     ecc_table,
                     pow_of_rand_table,
+                    instance_table,
                 },
             ),
             challenges,

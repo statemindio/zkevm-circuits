@@ -31,7 +31,7 @@ use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{AssignedCell, Layouter, Region, Value},
     halo2curves::bn256::{Fq, G1Affine},
-    plonk::{Advice, Any, Column, ConstraintSystem, Error, Expression, Fixed, VirtualCells},
+    plonk::{Advice, Any, Column, ConstraintSystem, Error, Expression, Fixed, VirtualCells, Instance},
     poly::Rotation,
 };
 use snark_verifier::util::arithmetic::PrimeCurveAffine;
@@ -2905,5 +2905,19 @@ impl<const MAX: usize> RangeTable<MAX> {
 impl<const MAX: usize> From<RangeTable<MAX>> for TableColumn {
     fn from(table: RangeTable<MAX>) -> TableColumn {
         table.0
+    }
+}
+
+// Instance table
+#[derive(Clone, Copy, Debug)]
+pub struct InstanceTable {
+    pub keccak: [Column<Instance>; 32],
+}
+
+impl InstanceTable {
+    pub fn construct<F: Field>(meta: &mut ConstraintSystem<F>) -> Self {
+        Self {
+            keccak: (0..32).map(|_| meta.instance_column()).collect::<Vec<Column<Instance>>>().try_into().unwrap(),
+        }
     }
 }
