@@ -21,7 +21,7 @@ use halo2_proofs::{
     circuit::Value,
     plonk::{
         Error,
-        Expression::{self, Constant}, Instance, Column,
+        Expression::{self, Constant},
     },
 };
 use itertools::Itertools;

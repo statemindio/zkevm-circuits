@@ -17,7 +17,7 @@ use crate::{
             constraint_builder::{
                 BaseConstraintBuilder, ConstrainBuilderCommon, EVMConstraintBuilder,
             },
-            rlc, CellType, Word, StepRws,
+            rlc, CellType, StepRws,
         },
         witness::{Block, Call, ExecStep, Transaction}, EvmCircuit,
     },
@@ -32,7 +32,7 @@ use halo2_proofs::{
     circuit::{Layouter, Region, Value},
     plonk::{
         Advice, Assigned, Column, ConstraintSystem, Error, Expression, FirstPhase, Fixed, Selector,
-        VirtualCells, Instance,
+        VirtualCells,
     },
     poly::Rotation,
 };
@@ -240,6 +240,7 @@ pub(crate) trait ExecutionGadget<F: FieldExt> {
         step: &ExecStep,
     ) -> Result<(), Error>;
 
+    #[allow(unused_variables)]
     fn query_instance(
         meta: &mut ConstraintSystem<F>,
         instance_table: &InstanceTable,
@@ -1774,14 +1775,17 @@ impl<F: Field> ExecutionConfig<F> {
         for transaction in &block.txs {
             for step in &transaction.steps {
                 let height = step.execution_state.get_step_height();
-                if step.execution_state == ExecutionState::SHA3 {
-                    let mut rws = StepRws::new(block, step);
-                    rws.offset_add(2);
-                    let sha3_output = rws.next().stack_value().to_le_bytes();
-                    for i in offset..offset + height {
-                        for j in 0..32 {
-                            instance[j][i] = F::from_u128(sha3_output[j] as u128);
-                        }
+                match step.execution_state {
+                    ExecutionState::SHA3 => {
+                        let mut rws = StepRws::new(block, step);
+                        rws.offset_add(2);
+                        let sha3_output = rws.next().stack_value().to_le_bytes();
+                        for i in 0..32 {
+                            instance[i][offset] = F::from_u128(sha3_output[i] as u128);
+                        }                    
+                    }
+                    _ => {
+
                     }
                 }
                 offset += height;
