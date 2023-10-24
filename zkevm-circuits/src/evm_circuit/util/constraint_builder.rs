@@ -185,13 +185,6 @@ pub(crate) trait ConstrainBuilderCommon<F: Field> {
         self.add_constraint(name, lhs - rhs);
     }
 
-    fn require_equal_many(&mut self, name: &'static str, lhs: Vec<Expression<F>>, rhs: Vec<Expression<F>>) {
-        assert!(lhs.len() == rhs.len(), "expressions len should be equal");
-        for i in 0..lhs.len() {
-            self.add_constraint(name, lhs[i].clone() - rhs[i].clone());
-        }
-    }
-
     fn require_boolean(&mut self, name: &'static str, value: Expression<F>) {
         self.add_constraint(name, value.clone() * (1.expr() - value));
     }
@@ -507,9 +500,9 @@ impl<'a, F: Field> EVMConstraintBuilder<'a, F> {
         .query_cells(cell_type, count)
     }
 
-    pub(crate) fn query_instance(&self, idx: usize) -> Vec<Expression<F>> {
+    pub(crate) fn query_word_rlc_instance(&self, idx: usize) -> Expression<F> {
         assert!(idx < self.instance.len(), "idx exceeds instance lenght");
-        self.instance[idx].clone()
+        rlc::expr(&self.instance[idx], self.challenges().evm_word())
     }
 
     pub(crate) fn word_rlc<const N: usize>(&self, bytes: [Expression<F>; N]) -> Expression<F> {

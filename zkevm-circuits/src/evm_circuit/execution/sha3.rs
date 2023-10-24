@@ -44,7 +44,7 @@ impl<F: Field> ExecutionGadget<F> for Sha3Gadget<F> {
         let offset = cb.query_cell_phase2();
         let size = cb.query_word_rlc();
         let sha3_rlc = cb.query_word_rlc();
-        let keccak_instance = cb.query_instance(0);
+        let keccak_instance = cb.query_word_rlc_instance(0);
 
         cb.stack_pop(offset.expr());
         cb.stack_pop(size.expr());
@@ -74,9 +74,8 @@ impl<F: Field> ExecutionGadget<F> for Sha3Gadget<F> {
             cb.require_zero("copy_rwc_inc == 0 for size = 0", copy_rwc_inc.expr());
             cb.require_zero("rlc_acc == 0 for size = 0", rlc_acc.expr());
         });
-        cb.keccak_table_lookup(rlc_acc.expr(), memory_address.length(), sha3_rlc.expr());
-        let sha3_exprs: Vec<Expression<F>> = sha3_rlc.cells.iter().map(|c| c.expr()).collect();
-        cb.require_equal_many("keccak equal", sha3_exprs, keccak_instance);
+
+        cb.require_equal("keccak equal", sha3_rlc.expr(), keccak_instance);
 
         let memory_expansion = MemoryExpansionGadget::construct(cb, [memory_address.end_offset()]);
         let memory_copier_gas = MemoryCopierGasGadget::construct(
