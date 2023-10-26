@@ -27,6 +27,7 @@ mod evm_circ_benches {
     use rand::SeedableRng;
     use rand_xorshift::XorShiftRng;
     use std::env::var;
+    use bus_mapping::circuit_input_builder::PrecompileEcParams;
     use zkevm_circuits::evm_circuit::{witness::block_convert, TestEvmCircuit, EvmCircuit};
     use integration_tests::{get_client, TX_ID};
 
@@ -143,17 +144,19 @@ mod evm_circ_benches {
         assert!(!tx_id.is_empty(), "tx id is empty");
 
         let params = CircuitsParams {
-            max_rws: 4_000_000,
-            max_copy_rows: 4_000_000,
+            max_rws: 30000,
+            max_copy_rows: 30000,
             max_txs: 1,
-            max_calldata: 2_000_000,
+            max_calldata: 30000,
             max_inner_blocks: 1,
-            max_mpt_rows: 3_000_000,
-            max_bytecode: 3_000_000,
-            max_keccak_rows: 0, // FIXME: can this be none?
-            max_exp_steps: 100_000,
-            max_evm_rows: 4_000_000,
-            max_rlp_rows: 4_000_000,
+            max_bytecode: 30000,
+            max_mpt_rows: 30000,
+            max_keccak_rows: 0,
+            max_poseidon_rows: 0,
+            max_vertical_circuit_rows: 0,
+            max_exp_steps: 1000,
+            max_evm_rows: 0,
+            max_rlp_rows: 33000,
             ..Default::default()
         };
 
