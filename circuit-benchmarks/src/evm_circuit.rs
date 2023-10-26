@@ -143,17 +143,17 @@ mod evm_circ_benches {
         assert!(!tx_id.is_empty(), "tx id is empty");
 
         let params = CircuitsParams {
-            max_rws: 1000,
-            max_copy_rows: 1000,
+            max_rws: 4_000_000,
+            max_copy_rows: 4_000_000,
             max_txs: 1,
-            max_calldata: 1000,
-            max_mpt_rows: 4000,
+            max_calldata: 2_000_000,
             max_inner_blocks: 1,
-            max_bytecode: 1000,
-            max_keccak_rows: 100,
-            max_exp_steps: 1000 / 7,
-            max_evm_rows: 1000,
-            max_rlp_rows: 4000,
+            max_mpt_rows: 3_000_000,
+            max_bytecode: 3_000_000,
+            max_keccak_rows: 0, // FIXME: can this be none?
+            max_exp_steps: 100_000,
+            max_evm_rows: 4_000_000,
+            max_rlp_rows: 4_000_000,
             ..Default::default()
         };
 

@@ -227,7 +227,6 @@ impl<P: JsonRpcClient> GethClient<P> {
         let account = serialize(&account);
         let keys = PaddedWordVecWrapper(keys);
         let keys = serialize(&keys);
-        println!("{keys:#?}");
         let num = serialize(&block_num);
         self.0
             .request("eth_getProof", [account, keys, num])
