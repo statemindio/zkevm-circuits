@@ -27,9 +27,9 @@ mod evm_circ_benches {
     use rand::SeedableRng;
     use rand_xorshift::XorShiftRng;
     use std::env::var;
-    use bus_mapping::circuit_input_builder::PrecompileEcParams;
     use zkevm_circuits::evm_circuit::{witness::block_convert, TestEvmCircuit, EvmCircuit};
     use integration_tests::{get_client, TX_ID};
+    use zkevm_circuits::util::SubCircuit;
 
     #[cfg_attr(not(feature = "benches"), ignore)]
     #[cfg_attr(not(feature = "print-trace"), allow(unused_variables))] // FIXME: remove this after ark-std upgrade
@@ -169,6 +169,9 @@ mod evm_circ_benches {
         let block = block_convert::<Fr>(&builder.block, &builder.code_db).unwrap();
 
         let circuit = EvmCircuit::<Fr>::new(block);
+        let instance = circuit.instance();
+        let vec_of_slices: Vec<&[Fr]> = instance.iter().map(AsRef::as_ref).collect();
+        let slice_instance: &[&[Fr]] = &vec_of_slices;
         let mut rng = XorShiftRng::from_seed([
             0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06,
             0xbc, 0xe5,
@@ -201,7 +204,7 @@ mod evm_circ_benches {
             &general_params,
             &pk,
             &[circuit],
-            &[&[]],
+            &[slice_instance],
             rng,
             &mut transcript,
         )
