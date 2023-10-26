@@ -655,6 +655,7 @@ dependencies = [
  "ethers",
  "ethers-signers",
  "halo2_proofs",
+ "integration-tests",
  "itertools",
  "keccak256",
  "log",

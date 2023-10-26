@@ -35,6 +35,9 @@ super_bench: ## Run Super Circuit benchmarks
 
 evm_bench: ## Run Evm Circuit benchmarks
 	@cargo test --profile bench bench_evm_circuit_prover -p circuit-benchmarks --features benches  -- --nocapture
+	
+real_evm_bench: ## Run Real Evm Circuit benchmarks
+	@cargo test --profile bench bench_real_evm_circuit_prover -p circuit-benchmarks --features benches  -- --nocapture
 
 state_bench: ## Run State Circuit benchmarks
 	@cargo test --profile bench bench_state_circuit_prover -p circuit-benchmarks --features benches  -- --nocapture
