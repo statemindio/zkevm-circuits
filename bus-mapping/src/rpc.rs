@@ -9,6 +9,7 @@ use eth_types::{
 pub use ethers_core::types::BlockNumber;
 use ethers_providers::JsonRpcClient;
 use serde::Serialize;
+use serde::ser::{Serializer, SerializeSeq};
 use std::collections::HashMap;
 
 use crate::util::CHECK_MEM_STRICT;
@@ -20,6 +21,21 @@ use crate::util::CHECK_MEM_STRICT;
 /// If the type returns an error during serialization.
 pub fn serialize<T: serde::Serialize>(t: &T) -> serde_json::Value {
     serde_json::to_value(t).expect("Types never fail to serialize.")
+}
+
+#[derive(Serialize)]
+struct PaddedWordVecWrapper(#[serde(serialize_with = "serialize_vec_word")] Vec<Word>);
+
+fn serialize_vec_word<S>(vec: &Vec<Word>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+{
+    let mut seq = serializer.serialize_seq(Some(vec.len()))?;
+    for value in vec {
+        let hex_string = format!("0x{:064x}", value);
+        seq.serialize_element(&hex_string)?;
+    }
+    seq.end()
 }
 
 #[derive(Serialize)]
@@ -209,7 +225,9 @@ impl<P: JsonRpcClient> GethClient<P> {
         block_num: BlockNumber,
     ) -> Result<EIP1186ProofResponse, Error> {
         let account = serialize(&account);
+        let keys = PaddedWordVecWrapper(keys);
         let keys = serialize(&keys);
+        println!("{keys:#?}");
         let num = serialize(&block_num);
         self.0
             .request("eth_getProof", [account, keys, num])
