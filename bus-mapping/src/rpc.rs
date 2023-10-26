@@ -28,6 +28,9 @@ pub(crate) struct GethLoggerConfig {
     /// enable memory capture
     #[serde(rename = "EnableMemory")]
     enable_memory: bool,
+    /// disable memory capture
+    #[serde(rename = "DisableMemory")]
+    disable_memory: bool,
     /// disable stack capture
     #[serde(rename = "DisableStack")]
     disable_stack: bool,
@@ -43,6 +46,7 @@ impl Default for GethLoggerConfig {
     fn default() -> Self {
         Self {
             enable_memory: false,
+            disable_memory: false,
             disable_stack: false,
             disable_storage: false,
             enable_return_data: true,
@@ -150,6 +154,7 @@ impl<P: JsonRpcClient> GethClient<P> {
         let hash = serialize(&hash);
         let cfg = GethLoggerConfig {
             enable_memory: *CHECK_MEM_STRICT,
+            disable_memory: !*CHECK_MEM_STRICT,
             ..Default::default()
         };
         let cfg = serialize(&cfg);
