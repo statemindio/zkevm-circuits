@@ -165,13 +165,14 @@ mod evm_circ_benches {
         let builder = cli.gen_inputs_tx(tx_id).await.unwrap();
     
         assert!(!builder.block.txs.is_empty(), "no trxs in block");
+        println!("prove start");
     
         let block = block_convert::<Fr>(&builder.block, &builder.code_db).unwrap();
 
         let circuit = EvmCircuit::<Fr>::new(block);
-        let instance = circuit.instance();
-        let vec_of_slices: Vec<&[Fr]> = instance.iter().map(AsRef::as_ref).collect();
-        let slice_instance: &[&[Fr]] = &vec_of_slices;
+        // let instance = circuit.instance();
+        // let vec_of_slices: Vec<&[Fr]> = instance.iter().map(AsRef::as_ref).collect();
+        // let slice_instance: &[&[Fr]] = &vec_of_slices;
         let mut rng = XorShiftRng::from_seed([
             0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06,
             0xbc, 0xe5,
@@ -204,7 +205,7 @@ mod evm_circ_benches {
             &general_params,
             &pk,
             &[circuit],
-            &[slice_instance],
+            &[&[]],
             rng,
             &mut transcript,
         )
