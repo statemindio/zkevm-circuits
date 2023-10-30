@@ -141,6 +141,7 @@ mod evm_circ_benches {
             .expect("Cannot parse DEGREE env var as u32");
 
         let tx_id: &str = &TX_ID;
+        println!("TX_ID: {tx_id}");
         assert!(!tx_id.is_empty(), "tx id is empty");
 
         let params = CircuitsParams {
