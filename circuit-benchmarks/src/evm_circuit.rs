@@ -27,9 +27,8 @@ mod evm_circ_benches {
     use rand::SeedableRng;
     use rand_xorshift::XorShiftRng;
     use std::env::var;
-    use zkevm_circuits::evm_circuit::{witness::block_convert, TestEvmCircuit, EvmCircuit};
+    use zkevm_circuits::evm_circuit::{witness::block_convert, TestEvmCircuit};
     use integration_tests::{get_client, TX_ID};
-    use zkevm_circuits::util::SubCircuit;
 
     #[cfg_attr(not(feature = "benches"), ignore)]
     #[cfg_attr(not(feature = "print-trace"), allow(unused_variables))] // FIXME: remove this after ark-std upgrade
@@ -170,7 +169,7 @@ mod evm_circ_benches {
     
         let block = block_convert::<Fr>(&builder.block, &builder.code_db).unwrap();
 
-        let circuit = EvmCircuit::<Fr>::new(block);
+        let circuit = TestEvmCircuit::<Fr>::new(block);
         // let instance = circuit.instance();
         // let vec_of_slices: Vec<&[Fr]> = instance.iter().map(AsRef::as_ref).collect();
         // let slice_instance: &[&[Fr]] = &vec_of_slices;
@@ -201,7 +200,7 @@ mod evm_circ_benches {
             Challenge255<G1Affine>,
             XorShiftRng,
             Blake2bWrite<Vec<u8>, G1Affine, Challenge255<G1Affine>>,
-            EvmCircuit<Fr>,
+            TestEvmCircuit<Fr>,
         >(
             &general_params,
             &pk,
