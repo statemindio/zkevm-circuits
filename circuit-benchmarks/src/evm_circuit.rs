@@ -7,7 +7,7 @@ mod evm_circ_benches {
         mock::BlockData,
         circuit_input_builder::{BuilderClient, CircuitsParams},
     };    
-    use eth_types::geth_types::GethData;
+    use eth_types::geth_types::{get_rlp_unsigned, GethData, Transaction};
     use halo2_proofs::{
         halo2curves::bn256::{Bn256, Fr, G1Affine},
         plonk::{create_proof, keygen_pk, keygen_vk, verify_proof},
@@ -27,6 +27,13 @@ mod evm_circ_benches {
     use rand::SeedableRng;
     use rand_xorshift::XorShiftRng;
     use std::env::var;
+    use std::process::exit;
+    use std::time::Duration;
+    use ethers::abi::AbiEncode;
+    use ethers::types::TransactionRequest;
+    use ethers::utils::hex::decode_to_slice;
+    use tokio::time::sleep;
+    use eth_types::H256;
     use zkevm_circuits::evm_circuit::{witness::block_convert, TestEvmCircuit};
     use integration_tests::{get_client, TX_ID};
 
@@ -161,12 +168,30 @@ mod evm_circ_benches {
         };
 
         let cli = get_client();
+        let mut hash: [u8; 32] = [0; 32];
+        let hash_str = if &tx_id[0..2] == "0x" {
+            &tx_id[2..]
+        } else {
+            tx_id
+        };
+        decode_to_slice(hash_str, &mut hash).unwrap();
+        let tx_hash = H256::from(hash);
+        let tx = cli.get_tx_by_hash(tx_hash).await.unwrap();
+        let fork_url = "https://eth-mainnet.g.alchemy.com/v2/K-zNtEvcfFNf1Fmr5iPscSb1ufr9R1og";
+        cli.reset(fork_url, tx.block_number.unwrap()).await.unwrap();
+        cli.set_nonce(tx.from, tx.nonce).await.unwrap();
+        cli.set_next_block_base_fee_per_gas(tx.max_fee_per_gas.unwrap()).await.unwrap();
+        let tx_id = &cli.send_raw_transaction(tx.rlp()).await.unwrap().encode_hex();
+        cli.mine().await.unwrap();
+
+        println!("tx_hash: {tx_hash}");
         let cli = BuilderClient::new(cli, params).await.unwrap();
         let builder = cli.gen_inputs_tx(tx_id).await.unwrap();
     
         assert!(!builder.block.txs.is_empty(), "no trxs in block");
         println!("prove start");
-    
+
+        exit(0);
         let block = block_convert::<Fr>(&builder.block, &builder.code_db).unwrap();
 
         let circuit = TestEvmCircuit::<Fr>::new(block);

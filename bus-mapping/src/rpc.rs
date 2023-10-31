@@ -4,13 +4,14 @@
 use crate::Error;
 use eth_types::{
     Address, Block, Bytes, EIP1186ProofResponse, GethExecTrace, GethPrestateTrace, Hash,
-    ResultGethExecTraces, ResultGethPrestateTraces, Transaction, Word, H256, U64,
+    ResultGethExecTraces, ResultGethPrestateTraces, Transaction, Word, H256, U64, ToLittleEndian
 };
 pub use ethers_core::types::BlockNumber;
 use ethers_providers::JsonRpcClient;
 use serde::Serialize;
 use serde::ser::{Serializer, SerializeSeq};
 use std::collections::HashMap;
+use ethers_core::types::{U256};
 
 use crate::util::CHECK_MEM_STRICT;
 
@@ -44,9 +45,6 @@ pub(crate) struct GethLoggerConfig {
     /// enable memory capture
     #[serde(rename = "EnableMemory")]
     enable_memory: bool,
-    /// disable memory capture
-    #[serde(rename = "DisableMemory")]
-    disable_memory: bool,
     /// disable stack capture
     #[serde(rename = "DisableStack")]
     disable_stack: bool,
@@ -62,7 +60,6 @@ impl Default for GethLoggerConfig {
     fn default() -> Self {
         Self {
             enable_memory: false,
-            disable_memory: true,
             disable_stack: false,
             disable_storage: false,
             enable_return_data: true,
@@ -170,7 +167,6 @@ impl<P: JsonRpcClient> GethClient<P> {
         let hash = serialize(&hash);
         let cfg = GethLoggerConfig {
             enable_memory: *CHECK_MEM_STRICT,
-            disable_memory: !*CHECK_MEM_STRICT,
             ..Default::default()
         };
         let cfg = serialize(&cfg);
@@ -265,6 +261,57 @@ impl<P: JsonRpcClient> GethClient<P> {
     pub async fn miner_start(&self) -> Result<(), Error> {
         self.0
             .request("miner_start", [serialize(&1)])
+            .await
+            .map_err(|e| Error::JSONRpcError(e.into()))
+    }
+
+    /// Calls anvil `anvil_mine` via JSON-RPC, which mines a single block
+    /// after each tx instantly.
+    pub async fn mine(&self) -> Result<(), Error> {
+        self.0
+            .request("anvil_mine", [serialize(&1), serialize(&12)])
+            .await
+            .map_err(|e| Error::JSONRpcError(e.into()))
+    }
+
+    /// Calls anvil `anvil_reset` via JSON-RPC, which updates fork state
+    pub async fn reset(&self, json_rpc_url: &str, block_number: U64) -> Result<(), Error> {
+        let forking = serialize(&serde_json::json! ({
+            "json_rpc_url": json_rpc_url,
+            "block_number": &block_number,
+        }));
+        self.0
+            .request("anvil_reset", [forking])
+            .await
+            .map_err(|e| Error::JSONRpcError(e.into()))
+    }
+
+    /// Calls anvil `anvil_setNonce` via JSON-RPC, which updates address nonce
+    pub async fn set_nonce(&self, address: Address, nonce: U256) -> Result<(), Error> {
+        let address = serialize(&address);
+        let nonce = serialize(&nonce);
+        self.0
+            .request("anvil_setNonce", [address, nonce])
+            .await
+            .map_err(|e| Error::JSONRpcError(e.into()))
+    }
+
+    /// Calls anvil `anvil_sendRawTransaction` via JSON-RPC, which sends raw tx
+    pub async fn send_raw_transaction(&self, raw_tx: Bytes) -> Result<Hash, Error> {
+        let raw_tx = serialize(&raw_tx);
+        self.0
+            .request("eth_sendRawTransaction", [raw_tx])
+            .await
+            .map_err(|e| Error::JSONRpcError(e.into()))
+    }
+
+    /// Calls anvil `anvil_setNextBlockBaseFeePerGas` via JSON-RPC, which updates block base fee per gas
+    pub async fn set_next_block_base_fee_per_gas(&self, basefee: U256) -> Result<(), Error> {
+
+        let basefee = serialize(&basefee);
+        println!("nasa {basefee:#?}");
+        self.0
+            .request("anvil_setNextBlockBaseFeePerGas", [basefee])
             .await
             .map_err(|e| Error::JSONRpcError(e.into()))
     }

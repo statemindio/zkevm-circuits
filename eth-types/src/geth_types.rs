@@ -112,7 +112,13 @@ impl TxType {
 pub fn get_rlp_unsigned(tx: &crate::Transaction) -> Vec<u8> {
     match TxType::get_tx_type(tx) {
         TxType::Eip155 => {
+            let sig_v = tx.v;
             let tx: TransactionRequest = tx.into();
+            let mut tx: TransactionRequest = tx.into();
+            tx.chain_id = Some(tx.chain_id.unwrap_or_else(|| {
+                let recv_v = TxType::Eip155.get_recovery_id(sig_v.as_u64()) as u64;
+                (sig_v - recv_v - 35) / 2
+            }));
             tx.rlp().to_vec()
         }
         TxType::PreEip155 => {
