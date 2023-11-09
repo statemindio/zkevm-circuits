@@ -362,6 +362,30 @@ struct GethExecStepInternal {
     storage: HashMap<DebugU256, DebugU256>,
 }
 
+#[derive(Deserialize)]
+#[doc(hidden)]
+struct AnvilExecStepInternal {
+    pc: ProgramCounter,
+    op: OpcodeId, // v teorii zdec nuzhno
+    #[serde(deserialize_with = "parse_gas")]
+    gas: Gas,
+    #[serde(default, deserialize_with = "parse_gas")]
+    refund: Gas,
+    #[serde(rename = "gasCost", deserialize_with = "parse_gas_cost")]
+    gas_cost: GasCost,
+    depth: u16,
+    error: Option<String>,
+    // stack is in hex 0x prefixed
+    #[serde(default)]
+    stack: Vec<DebugU256>,
+    // memory is in chunks of 32 bytes, in hex
+    #[serde(default)]
+    memory: Vec<DebugU256>,
+    // storage is hex -> hex
+    #[serde(default)]
+    storage: HashMap<DebugU256, DebugU256>,
+}
+
 /// The execution step type returned by geth RPC debug_trace* methods.
 /// Corresponds to `StructLogRes` in `go-ethereum/internal/ethapi/api.go`.
 #[derive(Clone, Eq, PartialEq, Serialize)]
@@ -380,6 +404,43 @@ pub struct GethExecStep {
     pub memory: Memory,
     // storage is hex -> hex
     pub storage: Storage,
+}
+
+/// The execution step type returned by geth RPC debug_trace* methods.
+/// Corresponds to `StructLogRes` in `go-ethereum/internal/ethapi/api.go`.
+#[derive(Clone, Eq, PartialEq, Serialize)]
+#[doc(hidden)]
+pub struct AnvilExecStep {
+    pub pc: ProgramCounter,
+    pub op: OpcodeId,
+    pub gas: Gas,
+    pub gas_cost: GasCost,
+    pub refund: Gas,
+    pub depth: u16,
+    pub error: Option<String>,
+    // stack is in hex 0x prefixed
+    pub stack: Stack,
+    // memory is in chunks of 32 bytes, in hex
+    pub memory: Memory,
+    // storage is hex -> hex
+    pub storage: Storage,
+}
+
+impl AnvilExecStep {
+    fn to_geth_exec_step(&self) -> GethExecStep {
+        GethExecStep {
+            pc: self.pc,
+            op: self.op,
+            gas: self.gas,
+            gas_cost: self.gas_cost,
+            refund: self.refund,
+            depth: self.depth,
+            error: self.error.clone(),
+            stack: self.stack.clone(),
+            memory: self.memory.clone(),
+            storage: self.storage.clone(),
+        }
+    }
 }
 
 // Wrapper over u8 that provides formats the byte in hex for [`fmt::Debug`].
@@ -418,12 +479,60 @@ impl fmt::Debug for GethExecStep {
     }
 }
 
+impl fmt::Debug for AnvilExecStep {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Step")
+            .field("pc", &format_args!("0x{:04x}", self.pc.0))
+            .field("op", &self.op)
+            .field("gas", &format_args!("{}", self.gas.0))
+            .field("gas_cost", &format_args!("{}", self.gas_cost.0))
+            .field("refund", &format_args!("{}", self.refund.0))
+            .field("depth", &self.depth)
+            .field("error", &self.error)
+            .field("stack", &self.stack)
+            // .field("memory", &self.memory)
+            .field("storage", &self.storage)
+            .finish()
+    }
+}
+
 impl<'de> Deserialize<'de> for GethExecStep {
     fn deserialize<D>(deserializer: D) -> Result<GethExecStep, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
         let s = GethExecStepInternal::deserialize(deserializer)?;
+        Ok(Self {
+            pc: s.pc,
+            op: s.op,
+            gas: s.gas,
+            refund: s.refund,
+            gas_cost: s.gas_cost,
+            depth: s.depth,
+            error: s.error,
+            stack: Stack(s.stack.iter().map(|dw| dw.to_word()).collect::<Vec<Word>>()),
+            memory: Memory::from(
+                s.memory
+                    .iter()
+                    .map(|dw| dw.to_word())
+                    .collect::<Vec<Word>>(),
+            ),
+            storage: Storage(
+                s.storage
+                    .iter()
+                    .map(|(k, v)| (k.to_word(), v.to_word()))
+                    .collect(),
+            ),
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for AnvilExecStep {
+    fn deserialize<D>(deserializer: D) -> Result<AnvilExecStep, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+    {
+        let s = AnvilExecStepInternal::deserialize(deserializer)?;
         Ok(Self {
             pc: s.pc,
             op: s.op,
@@ -494,11 +603,76 @@ pub struct GethExecTrace {
     pub account_after: Vec<crate::l2_types::AccountProofWrapper>,
 }
 
+/// The execution trace type returned by geth RPC debug_trace* methods.
+/// Corresponds to `ExecutionResult` in `go-ethereum/internal/ethapi/api.go`.
+/// The deserialization truncates the memory of each step in `struct_logs` to
+/// the memory size before the expansion, so that it corresponds to the memory
+/// before the step is executed.
+#[derive(Deserialize, Serialize, Clone, Debug, Eq, PartialEq)]
+pub struct AnvilExecTrace {
+    /// L1 fee
+    #[serde(default)]
+    pub l1_fee: u64,
+    /// Used gas
+    #[serde(deserialize_with = "parse_gas")]
+    pub gas: Gas,
+    /// True when the transaction has failed.
+    pub failed: bool,
+    /// Return value of execution which is a hex encoded byte array
+    #[serde(rename = "returnValue")]
+    pub return_value: String,
+    /// Vector of geth execution steps of the trace.
+    #[serde(rename = "structLogs")]
+    pub struct_logs: Vec<GethExecStep>,
+    #[serde(
+    rename = "accountAfter",
+    default,
+    deserialize_with = "parse_account_after"
+    )]    /// List of accounts' (coinbase etc) status AFTER execution
+    /// Only viable for scroll mode
+    pub account_after: Vec<crate::l2_types::AccountProofWrapper>,
+}
+
+impl AnvilExecTrace {
+    /// Converts to `GethExecTrace`.
+    pub fn to_geth_exec_trace(self) -> GethExecTrace {
+        GethExecTrace {
+            l1_fee: self.l1_fee,
+            gas: self.gas,
+            failed: self.failed,
+            return_value: self.return_value,
+            // struct_logs: self.struct_logs.iter().map(|s| s.to_geth_exec_step()).collect(),
+            struct_logs: self.struct_logs,
+            account_after: self.account_after,
+        }
+    }
+}
+
 fn parse_account_after<'de, D>(d: D) -> Result<Vec<crate::l2_types::AccountProofWrapper>, D::Error>
     where
         D: Deserializer<'de>,
 {
     Deserialize::deserialize(d).map(|x: Option<_>| x.unwrap_or_default())
+}
+
+fn parse_gas<'de, D>(d: D) -> Result<Gas, D::Error>
+    where
+        D: Deserializer<'de>,
+{
+    let s: String = Deserialize::deserialize(d)?;
+    let s = s.trim_start_matches("0x");
+    let gas = u64::from_str_radix(&s, 16).map_err(serde::de::Error::custom)?;
+    Ok(Gas(gas))
+}
+
+fn parse_gas_cost<'de, D>(d: D) -> Result<GasCost, D::Error>
+    where
+        D: Deserializer<'de>,
+{
+    let s: String = Deserialize::deserialize(d)?;
+    let s = s.trim_start_matches("0x");
+    let gas_cost = u64::from_str_radix(&s, 16).map_err(serde::de::Error::custom)?;
+    Ok(GasCost(gas_cost))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]

@@ -16,6 +16,7 @@ use serde::{Serialize, Serializer};
 use serde_with::serde_as;
 use sha3::{Digest, Keccak256};
 use std::collections::HashMap;
+use hex::decode_to_slice;
 use strum_macros::EnumIter;
 
 /// Tx type
@@ -112,13 +113,7 @@ impl TxType {
 pub fn get_rlp_unsigned(tx: &crate::Transaction) -> Vec<u8> {
     match TxType::get_tx_type(tx) {
         TxType::Eip155 => {
-            let sig_v = tx.v;
             let tx: TransactionRequest = tx.into();
-            let mut tx: TransactionRequest = tx.into();
-            tx.chain_id = Some(tx.chain_id.unwrap_or_else(|| {
-                let recv_v = TxType::Eip155.get_recovery_id(sig_v.as_u64()) as u64;
-                (sig_v - recv_v - 35) / 2
-            }));
             tx.rlp().to_vec()
         }
         TxType::PreEip155 => {
@@ -374,6 +369,19 @@ impl Transaction {
             msg,
             msg_hash,
         })
+    }
+
+    /// Convert tx hash hex string into Hash
+    pub fn tx_hash(tx_hash_str: &str) -> Hash {
+        let mut hash: [u8; 32] = [0; 32];
+        let hash_str = if &tx_hash_str[0..2] == "0x" {
+            &tx_hash_str[2..]
+        } else {
+            tx_hash_str
+        };
+        decode_to_slice(hash_str, &mut hash).unwrap();
+        let tx_hash: Hash = H256::from(hash);
+        tx_hash
     }
 }
 

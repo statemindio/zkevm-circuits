@@ -206,7 +206,7 @@ async fn main() {
         .map(|i| Arc::new(SignerMiddleware::new(get_provider(), get_wallet(i as u32))))
         .collect();
 
-    let cli = get_client();
+    let cli = get_client(false);
 
     // Fund NUM_TXS wallets from coinbase
     cli.miner_stop().await.expect("cannot stop miner");

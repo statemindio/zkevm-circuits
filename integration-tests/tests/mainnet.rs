@@ -51,7 +51,7 @@ async fn test_mock_prove_tx() {
     if tx_id.is_empty() {
         return;
     }
-    let cli = get_client();
+    let cli = get_client(false);
     let params = CircuitsParams {
         max_rws: 100000,
         max_copy_rows: 100000,
@@ -126,7 +126,7 @@ async fn test_circuit_all_block() {
     for blk in start..=end {
         let block_num = blk as u64;
         log::info!("test {} circuit, block number: {}", *CIRCUIT, block_num);
-        let cli = get_client();
+        let cli = get_client(false);
         let params = CircuitsParams {
             max_rws: 4_000_000,
             max_copy_rows: 0, // dynamic

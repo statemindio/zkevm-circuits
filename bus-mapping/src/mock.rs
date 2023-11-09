@@ -59,7 +59,8 @@ impl BlockData {
 
         let access_set: AccessSet =
             get_state_accesses(&geth_data.eth_block, &geth_data.geth_traces)
-                .expect("state accesses");
+                .expect("state accesses")
+                .into();
         // Initialize all accesses accounts to zero
         for addr in access_set.state.keys() {
             sdb.set_account(addr, state_db::Account::zero());

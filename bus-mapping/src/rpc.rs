@@ -2,10 +2,7 @@
 //! query a Geth node in order to get a Block, Tx or Trace info.
 
 use crate::Error;
-use eth_types::{
-    Address, Block, Bytes, EIP1186ProofResponse, GethExecTrace, GethPrestateTrace, Hash,
-    ResultGethExecTraces, ResultGethPrestateTraces, Transaction, Word, H256, U64, ToLittleEndian
-};
+use eth_types::{Address, Block, Bytes, EIP1186ProofResponse, GethExecTrace, GethPrestateTrace, Hash, ResultGethExecTraces, ResultGethPrestateTraces, Transaction, Word, H256, U64, AnvilExecTrace};
 pub use ethers_core::types::BlockNumber;
 use ethers_providers::JsonRpcClient;
 use serde::Serialize;
@@ -69,17 +66,23 @@ impl Default for GethLoggerConfig {
 
 /// Placeholder structure designed to contain the methods that the BusMapping
 /// needs in order to enable Geth queries.
-pub struct GethClient<P: JsonRpcClient>(pub P);
+pub struct GethClient<P: JsonRpcClient> {
+    provider: P,
+    is_anvil: bool,
+}
 
 impl<P: JsonRpcClient> GethClient<P> {
     /// Generates a new `GethClient` instance.
-    pub fn new(provider: P) -> Self {
-        Self(provider)
+    pub fn new(provider: P, is_anvil: bool) -> Self {
+        Self {
+            provider,
+            is_anvil,
+        }
     }
 
     /// Calls `eth_coinbase` via JSON-RPC returning the coinbase of the network.
     pub async fn get_coinbase(&self) -> Result<Address, Error> {
-        self.0
+        self.provider
             .request("eth_coinbase", ())
             .await
             .map_err(|e| Error::JSONRpcError(e.into()))
@@ -88,7 +91,7 @@ impl<P: JsonRpcClient> GethClient<P> {
     /// Calls `eth_chainId` via JSON-RPC returning the chain id of the network.
     pub async fn get_chain_id(&self) -> Result<u64, Error> {
         let net_id: U64 = self
-            .0
+            .provider
             .request("eth_chainId", ())
             .await
             .map_err(|e| Error::JSONRpcError(e.into()))?;
@@ -100,7 +103,7 @@ impl<P: JsonRpcClient> GethClient<P> {
     pub async fn get_block_by_hash(&self, hash: Hash) -> Result<Block<Transaction>, Error> {
         let hash = serialize(&hash);
         let flag = serialize(&true);
-        self.0
+        self.provider
             .request("eth_getBlockByHash", [hash, flag])
             .await
             .map_err(|e| Error::JSONRpcError(e.into()))
@@ -115,7 +118,7 @@ impl<P: JsonRpcClient> GethClient<P> {
     ) -> Result<Block<Transaction>, Error> {
         let num = serialize(&block_num);
         let flag = serialize(&true);
-        self.0
+        self.provider
             .request("eth_getBlockByNumber", [num, flag])
             .await
             .map_err(|e| Error::JSONRpcError(e.into()))
@@ -123,13 +126,11 @@ impl<P: JsonRpcClient> GethClient<P> {
     /// ..
     pub async fn get_tx_by_hash(&self, hash: H256) -> Result<Transaction, Error> {
         let hash = serialize(&hash);
-        let tx = self
-            .0
+        self
+            .provider
             .request("eth_getTransactionByHash", [hash])
             .await
-            .map_err(|e| Error::JSONRpcError(e.into()));
-        println!("tx is {tx:#?}");
-        tx
+            .map_err(|e| Error::JSONRpcError(e.into()))
     }
 
     /// Calls `debug_traceBlockByHash` via JSON-RPC returning a
@@ -139,7 +140,7 @@ impl<P: JsonRpcClient> GethClient<P> {
         let hash = serialize(&hash);
         let cfg = serialize(&GethLoggerConfig::default());
         let resp: ResultGethExecTraces = self
-            .0
+            .provider
             .request("debug_traceBlockByHash", [hash, cfg])
             .await
             .map_err(|e| Error::JSONRpcError(e.into()))?;
@@ -153,46 +154,49 @@ impl<P: JsonRpcClient> GethClient<P> {
         &self,
         block_num: BlockNumber,
     ) -> Result<Vec<GethExecTrace>, Error> {
-        let num = serialize(&block_num);
-        let cfg = serialize(&GethLoggerConfig::default());
-        let resp: ResultGethExecTraces = self
-            .0
-            .request("debug_traceBlockByNumber", [num, cfg])
-            .await
-            .map_err(|e| Error::JSONRpcError(e.into()))?;
-        Ok(resp.0.into_iter().map(|step| step.result).collect())
+        if self.is_anvil {
+            let mut traces = vec![];
+            let block = self.get_block_by_number(block_num).await?;
+            for tx in &block.transactions {
+                let trace = self.trace_tx_by_hash(tx.hash).await?;
+                traces.push(trace);
+            }
+            Ok(traces)
+        } else {
+            let num = serialize(&block_num);
+            let cfg = serialize(&GethLoggerConfig::default());
+            let resp: ResultGethExecTraces = self
+                .provider
+                .request("debug_traceBlockByNumber", [num, cfg])
+                .await
+                .map_err(|e| Error::JSONRpcError(e.into()))?;
+            Ok(resp.0.into_iter().map(|step| step.result).collect())
+        }
     }
     /// ..
     pub async fn trace_tx_by_hash(&self, hash: H256) -> Result<GethExecTrace, Error> {
         let hash = serialize(&hash);
         let cfg = GethLoggerConfig {
             enable_memory: *CHECK_MEM_STRICT,
+            disable_storage: false,
             ..Default::default()
         };
         let cfg = serialize(&cfg);
-        let resp: GethExecTrace = self
-            .0
-            .request("debug_traceTransaction", [hash, cfg])
-            .await
-            .map_err(|e| Error::JSONRpcError(e.into()))?;
-        Ok(resp)
-    }
-
-    /// Call `debug_traceTransaction` use prestateTracer to get prestate
-    pub async fn trace_tx_prestate_by_hash(
-        &self,
-        hash: H256,
-    ) -> Result<HashMap<Address, GethPrestateTrace>, Error> {
-        let hash = serialize(&hash);
-        let cfg = serialize(&serde_json::json! ({
-            "tracer": "prestateTracer",
-        }));
-        let resp: HashMap<Address, GethPrestateTrace> = self
-            .0
-            .request("debug_traceTransaction", [hash, cfg])
-            .await
-            .map_err(|e| Error::JSONRpcError(e.into()))?;
-        Ok(resp)
+        if self.is_anvil {
+            let resp: AnvilExecTrace = self
+                .provider
+                .request("debug_traceTransaction", [hash, cfg])
+                .await
+                .map_err(|e| Error::JSONRpcError(e.into()))?;
+            Ok(resp.to_geth_exec_trace())
+        } else {
+            let resp: GethExecTrace = self
+                .provider
+                .request("debug_traceTransaction", [hash, cfg])
+                .await
+                .map_err(|e| Error::JSONRpcError(e.into()))?;
+            Ok(resp)
+        }
     }
 
     /// Call `debug_traceBlockByHash` use prestateTracer to get prestate
@@ -205,7 +209,7 @@ impl<P: JsonRpcClient> GethClient<P> {
             "tracer": "prestateTracer",
         }));
         let resp: ResultGethPrestateTraces = self
-            .0
+            .provider
             .request("debug_traceBlockByHash", [hash, cfg])
             .await
             .map_err(|e| Error::JSONRpcError(e.into()))?;
@@ -221,7 +225,7 @@ impl<P: JsonRpcClient> GethClient<P> {
         let address = serialize(&contract_address);
         let num = serialize(&block_num);
         let resp: Bytes = self
-            .0
+            .provider
             .request("eth_getCode", [address, num])
             .await
             .map_err(|e| Error::JSONRpcError(e.into()))?;
@@ -238,10 +242,12 @@ impl<P: JsonRpcClient> GethClient<P> {
         block_num: BlockNumber,
     ) -> Result<EIP1186ProofResponse, Error> {
         let account = serialize(&account);
+        let mut keys = keys.clone();
+        keys.sort();
         let keys = PaddedWordVecWrapper(keys);
         let keys = serialize(&keys);
         let num = serialize(&block_num);
-        self.0
+        self.provider
             .request("eth_getProof", [account, keys, num])
             .await
             .map_err(|e| Error::JSONRpcError(e.into()))
@@ -250,7 +256,7 @@ impl<P: JsonRpcClient> GethClient<P> {
     /// Calls `miner_stop` via JSON-RPC, which makes the node stop mining
     /// blocks.  Useful for integration tests.
     pub async fn miner_stop(&self) -> Result<(), Error> {
-        self.0
+        self.provider
             .request("miner_stop", ())
             .await
             .map_err(|e| Error::JSONRpcError(e.into()))
@@ -259,7 +265,7 @@ impl<P: JsonRpcClient> GethClient<P> {
     /// Calls `miner_start` via JSON-RPC, which makes the node start mining
     /// blocks.  Useful for integration tests.
     pub async fn miner_start(&self) -> Result<(), Error> {
-        self.0
+        self.provider
             .request("miner_start", [serialize(&1)])
             .await
             .map_err(|e| Error::JSONRpcError(e.into()))
@@ -268,7 +274,7 @@ impl<P: JsonRpcClient> GethClient<P> {
     /// Calls anvil `anvil_mine` via JSON-RPC, which mines a single block
     /// after each tx instantly.
     pub async fn mine(&self) -> Result<(), Error> {
-        self.0
+        self.provider
             .request("anvil_mine", [serialize(&1), serialize(&12)])
             .await
             .map_err(|e| Error::JSONRpcError(e.into()))
@@ -280,7 +286,7 @@ impl<P: JsonRpcClient> GethClient<P> {
             "json_rpc_url": json_rpc_url,
             "block_number": &block_number,
         }));
-        self.0
+        self.provider
             .request("anvil_reset", [forking])
             .await
             .map_err(|e| Error::JSONRpcError(e.into()))
@@ -290,7 +296,7 @@ impl<P: JsonRpcClient> GethClient<P> {
     pub async fn set_nonce(&self, address: Address, nonce: U256) -> Result<(), Error> {
         let address = serialize(&address);
         let nonce = serialize(&nonce);
-        self.0
+        self.provider
             .request("anvil_setNonce", [address, nonce])
             .await
             .map_err(|e| Error::JSONRpcError(e.into()))
@@ -299,7 +305,7 @@ impl<P: JsonRpcClient> GethClient<P> {
     /// Calls anvil `anvil_sendRawTransaction` via JSON-RPC, which sends raw tx
     pub async fn send_raw_transaction(&self, raw_tx: Bytes) -> Result<Hash, Error> {
         let raw_tx = serialize(&raw_tx);
-        self.0
+        self.provider
             .request("eth_sendRawTransaction", [raw_tx])
             .await
             .map_err(|e| Error::JSONRpcError(e.into()))
@@ -310,7 +316,7 @@ impl<P: JsonRpcClient> GethClient<P> {
 
         let basefee = serialize(&basefee);
         println!("nasa {basefee:#?}");
-        self.0
+        self.provider
             .request("anvil_setNextBlockBaseFeePerGas", [basefee])
             .await
             .map_err(|e| Error::JSONRpcError(e.into()))

@@ -12,7 +12,7 @@ lazy_static! {
 }
 
 async fn test_circuit_input_builder_block(block_num: u64) {
-    let cli = get_client();
+    let cli = get_client(false);
     let cli = BuilderClient::new(
         cli,
         CircuitsParams {

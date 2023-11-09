@@ -34,7 +34,7 @@ mod tests {
     fn get_client() -> GethClient<Http> {
         let geth_url = "http://52.37.45.56:30303";
         let transport = Http::new(Url::parse(geth_url).expect("invalid url"));
-        GethClient::new(transport)
+        GethClient::new(transport, false)
     }
     async fn build_circuit_from_mainnet_block() -> (usize, TxCircuit<Fr>) {
         let degree = std::env::var("DEGREE")

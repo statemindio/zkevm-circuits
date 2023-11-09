@@ -12,14 +12,14 @@ lazy_static! {
 
 #[tokio::test]
 async fn test_get_chain_id() {
-    let cli = get_client();
+    let cli = get_client(false);
     let chain_id = cli.get_chain_id().await.unwrap();
     assert_eq!(CHAIN_ID, chain_id);
 }
 
 #[tokio::test]
 async fn test_get_coinbase() {
-    let cli = get_client();
+    let cli = get_client(false);
     let coinbase = cli.get_coinbase().await.unwrap();
     assert_eq!(GEN_DATA.coinbase, coinbase);
 }

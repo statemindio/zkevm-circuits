@@ -85,9 +85,9 @@ pub fn log_init() {
 }
 
 /// Get the integration test [`GethClient`]
-pub fn get_client() -> GethClient<Http> {
+pub fn get_client(is_anvil: bool) -> GethClient<Http> {
     let transport = Http::new(Url::parse(&GETH0_URL).expect("invalid url"));
-    GethClient::new(transport)
+    GethClient::new(transport, is_anvil)
 }
 
 /// Get the integration test [`Provider`]
@@ -98,7 +98,7 @@ pub fn get_provider() -> Provider<Http> {
 
 /// Get the chain id by querying the geth client.
 pub async fn get_chain_id() -> u64 {
-    let client = get_client();
+    let client = get_client(false);
     client.get_chain_id().await.unwrap()
 }
 
